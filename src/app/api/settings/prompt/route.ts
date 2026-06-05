@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSetting, setSetting } from "@/lib/db";
 import { PERSONALITY_PROMPT } from "@/lib/system-prompt";
 
+export const dynamic = "force-dynamic";
+
 export function GET() {
   const value = getSetting("personality") ?? PERSONALITY_PROMPT;
   return NextResponse.json({ value });

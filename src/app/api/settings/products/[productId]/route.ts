@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { updateProduct, deleteProduct } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ productId: string }> }
