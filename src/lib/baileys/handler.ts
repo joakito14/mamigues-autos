@@ -8,6 +8,7 @@ import {
   getProductById,
   updateConversationMeta,
   setReadStatus,
+  setMode,
 } from "../db";
 import { generateReply, extractConversationMetadata } from "../openrouter";
 
@@ -25,6 +26,13 @@ function parseImageMarkers(text: string): { ids: number[]; clean: string } {
     return "";
   }).trim();
   return { ids, clean };
+}
+
+// Detecta [DERIVAR] y lo elimina del texto
+function parseDerivarMarker(text: string): { derivar: boolean; clean: string } {
+  const derivar = /\[DERIVAR\]/i.test(text);
+  const clean = text.replace(/\[DERIVAR\]/gi, "").trim();
+  return { derivar, clean };
 }
 
 export async function processIncomingMessage(
@@ -78,11 +86,18 @@ export async function processIncomingMessage(
 
   if (!reply) return;
 
-  // Parsear marcadores de imagen
-  const { ids: imageIds, clean: replyText } = parseImageMarkers(reply);
+  // Parsear marcador de derivación y de imágenes
+  const { derivar, clean: afterDerivar } = parseDerivarMarker(reply);
+  const { ids: imageIds, clean: replyText } = parseImageMarkers(afterDerivar);
 
   // Guardar en DB el texto limpio (sin marcadores)
   insertMessage(convo.id, "assistant", replyText || reply);
+
+  // Si el cliente quiere avanzar con la compra, pasar a modo HUMAN silenciosamente
+  if (derivar) {
+    setMode(convo.id, "HUMAN");
+    console.log(`[bot] Derivación detectada — conversación ${convo.id} pasada a modo HUMAN`);
+  }
 
   // Extraer metadata del cliente en background (no bloquea el envío)
   const historyForMeta = getRecentHistory(convo.id, 20);
