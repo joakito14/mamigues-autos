@@ -19,6 +19,7 @@ interface ConversationPanelProps {
   initialMode: "AI" | "HUMAN";
   onDelete: () => void;
   onModeChange: (newMode: "AI" | "HUMAN") => void;
+  onBack?: () => void;
 }
 
 export default function ConversationPanel({
@@ -28,6 +29,7 @@ export default function ConversationPanel({
   initialMode,
   onDelete,
   onModeChange,
+  onBack,
 }: ConversationPanelProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [mode, setMode] = useState<"AI" | "HUMAN">(initialMode);
@@ -98,11 +100,25 @@ export default function ConversationPanel({
     <div className="flex flex-col h-full">
       {/* Header del panel */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0">
-        <div>
-          <h2 className="font-semibold text-gray-900 dark:text-slate-100">{displayName}</h2>
-          {name && <p className="text-xs text-gray-400 dark:text-slate-500">{phone}</p>}
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Flecha volver — solo visible en mobile */}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="md:hidden shrink-0 p-1 -ml-1 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+              aria-label="Volver"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          <div className="min-w-0">
+            <h2 className="font-semibold text-gray-900 dark:text-slate-100 truncate">{displayName}</h2>
+            {name && <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{cleanPhone(phone)}</p>}
+          </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <ModeToggle
             conversationId={conversationId}
             mode={mode}

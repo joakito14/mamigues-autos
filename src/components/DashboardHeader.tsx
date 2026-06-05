@@ -18,7 +18,7 @@ export default function DashboardHeader({ phone, onDisconnect }: DashboardHeader
 
   return (
     <>
-      <header className="flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 shrink-0">
+      <header className="flex items-center justify-between px-4 md:px-6 py-3 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 shrink-0">
 
         {/* Logo */}
         <div className="flex items-center gap-3">
@@ -35,9 +35,9 @@ export default function DashboardHeader({ phone, onDisconnect }: DashboardHeader
             </span>
           </div>
 
-          {/* Separador + número conectado */}
-          <div className="h-6 w-px bg-gray-200 dark:bg-slate-700 mx-1" />
-          <div className="flex items-center gap-1.5">
+          {/* Separador + número conectado — oculto en mobile */}
+          <div className="hidden sm:flex items-center gap-1.5 ml-1">
+            <div className="h-6 w-px bg-gray-200 dark:bg-slate-700 mx-1" />
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_1px_rgba(16,185,129,0.6)]" />
             <span className="text-xs text-gray-400 dark:text-slate-500">
               +{phone.replace(/@(s\.whatsapp\.net|lid)$/, "")}
@@ -49,15 +49,17 @@ export default function DashboardHeader({ phone, onDisconnect }: DashboardHeader
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowSettings(true)}
-            className="text-xs text-gray-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 border border-gray-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-600 px-3 py-1.5 rounded-lg transition-colors"
+            className="text-xs text-gray-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 border border-gray-300 dark:border-slate-600 hover:border-emerald-400 px-3 py-1.5 rounded-lg transition-colors"
           >
-            Configurar bot
+            <span className="hidden sm:inline">Configurar bot</span>
+            <span className="sm:hidden">Config.</span>
           </button>
           <button
             onClick={handleDisconnect}
             className="text-xs text-gray-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 border border-gray-300 dark:border-slate-600 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors"
           >
-            Desconectar
+            <span className="hidden sm:inline">Desconectar</span>
+            <span className="sm:hidden">✕</span>
           </button>
         </div>
       </header>

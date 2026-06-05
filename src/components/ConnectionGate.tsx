@@ -99,8 +99,8 @@ export default function ConnectionGate() {
       <DashboardHeader phone={phone} onDisconnect={handleDisconnect} />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-80 flex flex-col border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0">
+        {/* Sidebar — full screen en mobile cuando no hay chat abierto */}
+        <aside className={`flex flex-col border-r border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 w-full md:w-80 ${selectedId !== null ? "hidden md:flex" : "flex"}`}>
           <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
             <h2 className="text-xs font-semibold uppercase text-gray-400 dark:text-slate-500 tracking-wide">
               Conversaciones
@@ -115,8 +115,8 @@ export default function ConnectionGate() {
           />
         </aside>
 
-        {/* Panel derecho */}
-        <main className="flex-1 overflow-hidden">
+        {/* Panel — full screen en mobile cuando hay chat abierto */}
+        <main className={`flex-1 overflow-hidden flex flex-col ${selectedId !== null ? "flex" : "hidden md:flex"}`}>
           {selected ? (
             <ConversationPanel
               key={selected.id}
@@ -126,9 +126,10 @@ export default function ConnectionGate() {
               initialMode={selected.mode}
               onDelete={handleDeleteConversation}
               onModeChange={(newMode) => handleModeChange(selected.id, newMode)}
+              onBack={() => setSelectedId(null)}
             />
           ) : (
-            <div className="flex items-center justify-center h-full text-sm text-gray-400 dark:text-slate-500">
+            <div className="hidden md:flex items-center justify-center h-full text-sm text-gray-400 dark:text-slate-500">
               Seleccioná una conversación para ver los mensajes.
             </div>
           )}
