@@ -42,10 +42,22 @@ export default function ConversationList({
 }: ConversationListProps) {
   const [activeTab, setActiveTab] = useState<"new" | "read">("new");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [modeFilter, setModeFilter] = useState<"all" | "AI" | "HUMAN">("all");
+  const [modelFilter, setModelFilter] = useState<string>("all");
 
   const newCount = conversations.filter((c) => c.read_status === "new").length;
   const readCount = conversations.filter((c) => c.read_status === "read").length;
-  const visible = conversations.filter((c) => c.read_status === activeTab);
+
+  // Modelos únicos para el filtro
+  const uniqueModels = [...new Set(
+    conversations.map((c) => c.last_model).filter(Boolean)
+  )] as string[];
+
+  // Aplicar todos los filtros
+  const visible = conversations
+    .filter((c) => c.read_status === (activeTab === "new" ? "new" : "read"))
+    .filter((c) => modeFilter === "all" || c.mode === modeFilter)
+    .filter((c) => modelFilter === "all" || c.last_model === modelFilter);
 
   function toggleSummary(e: React.MouseEvent, id: number) {
     e.stopPropagation();
@@ -70,7 +82,7 @@ export default function ConversationList({
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      {/* Tabs */}
+      {/* Tabs nuevos / leídos */}
       <div className="flex border-b border-gray-200 dark:border-slate-700 shrink-0">
         <button
           onClick={() => setActiveTab("new")}
@@ -104,11 +116,53 @@ export default function ConversationList({
         </button>
       </div>
 
+      {/* Filtros */}
+      <div className="px-3 py-2 border-b border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-900 shrink-0 space-y-2">
+        {/* Filtro por modo */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wide w-10 shrink-0">Modo</span>
+          <div className="flex gap-1">
+            {(["all", "AI", "HUMAN"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setModeFilter(m)}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border transition-colors ${
+                  modeFilter === m
+                    ? m === "AI"
+                      ? "bg-emerald-500 border-emerald-600 text-white"
+                      : m === "HUMAN"
+                      ? "bg-amber-400 border-amber-500 text-amber-900"
+                      : "bg-gray-700 dark:bg-slate-300 border-gray-800 dark:border-slate-400 text-white dark:text-slate-900"
+                    : "bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+                }`}
+              >
+                {m === "all" ? "Todos" : m}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Filtro por modelo */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-slate-500 uppercase tracking-wide w-10 shrink-0">Auto</span>
+          <select
+            value={modelFilter}
+            onChange={(e) => setModelFilter(e.target.value)}
+            className="flex-1 text-[10px] font-medium border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-emerald-400"
+          >
+            <option value="all">Todos los modelos</option>
+            {uniqueModels.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Lista */}
       <ul className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800">
         {visible.length === 0 && (
           <li className="px-4 py-6 text-xs text-center text-gray-400 dark:text-slate-500">
-            {activeTab === "new" ? "Sin mensajes nuevos." : "Sin mensajes leídos."}
+            Sin conversaciones con estos filtros.
           </li>
         )}
 
@@ -140,8 +194,9 @@ export default function ConversationList({
                   </span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      isAI ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-400"
-                           : "bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-400"
+                      isAI
+                        ? "bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-400"
+                        : "bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-400"
                     }`}>
                       {isAI ? "IA" : "HUMAN"}
                     </span>
@@ -151,13 +206,12 @@ export default function ConversationList({
                   </div>
                 </div>
 
-                {/* Fila 2: preview + botón modelo + badge de estado */}
+                {/* Fila 2: preview + botón modelo + badge estado */}
                 <div className="flex items-center gap-1.5">
                   <p className="text-xs text-gray-500 dark:text-slate-400 truncate flex-1">
                     {conv.last_message_preview ?? ""}
                   </p>
 
-                  {/* Botón modelo / resumen */}
                   <button
                     onClick={(e) => toggleSummary(e, conv.id)}
                     className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-colors ${
@@ -173,7 +227,6 @@ export default function ConversationList({
                     {hasModel ? conv.last_model! : "inter."}
                   </button>
 
-                  {/* Badge de estado — verde "nuevo" / rojo "leído" */}
                   <button
                     onClick={(e) => handleStatusToggle(e, conv)}
                     title={isNew ? "Mover a Leídos" : "Mover a Nuevos"}
