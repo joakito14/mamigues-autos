@@ -83,6 +83,7 @@ function getDb(): Database.Database {
   try { _db.exec("ALTER TABLE conversations ADD COLUMN last_model TEXT"); } catch {}
   try { _db.exec("ALTER TABLE conversations ADD COLUMN client_summary TEXT"); } catch {}
   try { _db.exec("ALTER TABLE conversations ADD COLUMN read_status TEXT NOT NULL DEFAULT 'new'"); } catch {}
+  try { _db.exec("ALTER TABLE conversations ADD COLUMN pending_reply INTEGER NOT NULL DEFAULT 0"); } catch {}
 
   // Migración v2: limpiar prompt viejo para que el nuevo del archivo sea el default
   const promptVersion = _db.prepare("SELECT value FROM settings WHERE key = 'prompt_version'").get() as { value: string } | undefined;
@@ -106,6 +107,7 @@ export interface Conversation {
   last_model: string | null;
   client_summary: string | null;
   read_status: "new" | "read";
+  pending_reply: number;
 }
 
 export interface ConversationWithPreview extends Conversation {
@@ -176,6 +178,16 @@ export function setMode(conversationId: number, mode: "AI" | "HUMAN"): void {
 
 export function setReadStatus(id: number, status: "new" | "read"): void {
   getDb().prepare("UPDATE conversations SET read_status = ? WHERE id = ?").run(status, id);
+}
+
+export function setPendingReply(id: number, pending: boolean): void {
+  getDb().prepare("UPDATE conversations SET pending_reply = ? WHERE id = ?").run(pending ? 1 : 0, id);
+}
+
+export function getConversationsPendingReply(): Conversation[] {
+  return getDb()
+    .prepare("SELECT * FROM conversations WHERE pending_reply = 1 AND mode = 'AI'")
+    .all() as Conversation[];
 }
 
 export function updateConversationMeta(id: number, last_model: string | null, client_summary: string | null): void {

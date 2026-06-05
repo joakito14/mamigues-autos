@@ -7,7 +7,7 @@ import makeWASocket, {
 import pino from "pino";
 import path from "node:path";
 import { setConnectionState, getConnectionState } from "../db";
-import { processIncomingMessage } from "./handler";
+import { processIncomingMessage, retryPendingReplies } from "./handler";
 import { getPendingOutbox, markOutboxSent } from "../db";
 
 const AUTH_DIR = path.resolve(process.cwd(), "data", "auth");
@@ -23,6 +23,7 @@ let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let handle: BotHandle | null = null;
 let outboxTimer: ReturnType<typeof setInterval> | null = null;
 let restartTimer: ReturnType<typeof setInterval> | null = null;
+let pendingTimer: ReturnType<typeof setInterval> | null = null;
 
 export async function start(): Promise<void> {
   console.log("[bot] Iniciando conexión Baileys...");
@@ -52,6 +53,7 @@ export async function start(): Promise<void> {
     shutdown: async () => {
       if (outboxTimer) clearInterval(outboxTimer);
       if (restartTimer) clearInterval(restartTimer);
+      if (pendingTimer) clearInterval(pendingTimer);
       try {
         await sock.logout();
       } catch {}
@@ -92,6 +94,7 @@ export async function start(): Promise<void> {
       console.log(`[bot] Conectado como ${phone}`);
       setConnectionState({ status: "connected", qr_string: null, phone });
       startOutboxPoller();
+      startPendingPoller(sock);
       return;
     }
 
@@ -149,6 +152,15 @@ function scheduleReconnect(code: number | undefined): void {
     }
     start();
   }, delay);
+}
+
+// ─── Poller de respuestas pendientes ─────────────────────────────────────────
+
+function startPendingPoller(sock: ReturnType<typeof makeWASocket>): void {
+  if (pendingTimer) clearInterval(pendingTimer);
+  pendingTimer = setInterval(async () => {
+    await retryPendingReplies(sock).catch(() => {});
+  }, 60_000);
 }
 
 // ─── Poller de outbox ─────────────────────────────────────────────────────────
