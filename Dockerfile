@@ -13,5 +13,7 @@ RUN npm run build
 
 EXPOSE 3000
 
-# Arranca el bot en background y Next.js en foreground usando PORT de Railway
-CMD ["sh", "-c", "npm run start:bot & next start -p ${PORT:-3000}"]
+COPY start.sh ./
+RUN chmod +x start.sh
+
+CMD ["sh", "start.sh"]
