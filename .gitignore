@@ -1,0 +1,28 @@
+# Dependencias
+node_modules/
+
+# Next.js
+.next/
+out/
+
+# Datos en runtime (SQLite, sesión Baileys)
+data/
+auth/
+
+# Variables de entorno con secretos
+.env.local
+.env.*.local
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Claude Code configuración local
+.claude/settings.local.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
