@@ -6,7 +6,7 @@ echo "[startup] PORT=${PORT:-3000}"
 echo "[startup] NODE_ENV=${NODE_ENV}"
 
 # Crear directorios de datos si no existen
-mkdir -p /app/data /app/auth
+mkdir -p /app/data /app/data/auth
 
 # Arrancar el bot en background (si falla, Next.js sigue corriendo)
 echo "[startup] Iniciando bot de WhatsApp en background..."

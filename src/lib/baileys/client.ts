@@ -10,7 +10,7 @@ import { setConnectionState, getConnectionState } from "../db";
 import { processIncomingMessage } from "./handler";
 import { getPendingOutbox, markOutboxSent } from "../db";
 
-const AUTH_DIR = path.resolve(process.cwd(), "auth");
+const AUTH_DIR = path.resolve(process.cwd(), "data", "auth");
 
 const logger = pino({ level: "silent" });
 
@@ -178,7 +178,7 @@ function startRestartPoller(): void {
   if (restartTimer) clearInterval(restartTimer);
   const { existsSync, unlinkSync, rmSync } = require("node:fs");
   const RESTART_FLAG = path.resolve(process.cwd(), "data", ".restart");
-  const AUTH_PATH = path.resolve(process.cwd(), "auth");
+  const AUTH_PATH = path.resolve(process.cwd(), "data", "auth");
 
   restartTimer = setInterval(async () => {
     if (!existsSync(RESTART_FLAG)) return;
