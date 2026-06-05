@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getConversationById, setMode } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 interface Ctx {
   params: Promise<{ conversationId: string }>;
 }

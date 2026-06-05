@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { listProducts, createProduct } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export function GET() {
   return NextResponse.json(listProducts());
 }
