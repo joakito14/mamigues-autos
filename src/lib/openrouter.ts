@@ -13,6 +13,28 @@ export interface HistoryMessage {
   content: string;
 }
 
+async function callWithRetry(
+  fn: () => Promise<OpenAI.Chat.ChatCompletion>,
+  retries = 3,
+  delayMs = 6000
+): Promise<OpenAI.Chat.ChatCompletion> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status;
+      if (status === 429 && i < retries - 1) {
+        const wait = delayMs * (i + 1);
+        console.log(`[openrouter] 429 rate limit — reintentando en ${wait}ms (intento ${i + 1}/${retries})`);
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Max retries exceeded");
+}
+
 export async function generateReply(
   history: HistoryMessage[]
 ): Promise<string> {
@@ -23,15 +45,17 @@ export async function generateReply(
     })
   );
 
-  const completion = await client.chat.completions.create({
-    model: MODEL,
-    messages: [
-      { role: "system", content: buildSystemPrompt() },
-      ...messages,
-    ],
-    max_tokens: 512,
-    temperature: 0.7,
-  });
+  const completion = await callWithRetry(() =>
+    client.chat.completions.create({
+      model: MODEL,
+      messages: [
+        { role: "system", content: buildSystemPrompt() },
+        ...messages,
+      ],
+      max_tokens: 512,
+      temperature: 0.7,
+    })
+  );
 
   return completion.choices[0]?.message?.content?.trim() ?? "";
 }
