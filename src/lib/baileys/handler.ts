@@ -12,6 +12,7 @@ import {
   setBotStatus,
   setPendingReply,
   getConversationsPendingReply,
+  createAppointment,
 } from "../db";
 import { generateReply, extractConversationMetadata } from "../openrouter";
 
@@ -34,6 +35,20 @@ function parseDerivarMarker(text: string): { derivar: boolean; clean: string } {
   const derivar = /\[DERIVAR\]/i.test(text);
   const clean = text.replace(/\[DERIVAR\]/gi, "").trim();
   return { derivar, clean };
+}
+
+interface CitaData { datetime: string; clientName: string; title: string; }
+
+function parseCitaMarkers(text: string): { citas: CitaData[]; clean: string } {
+  const citas: CitaData[] = [];
+  const clean = text.replace(
+    /\[CITA:(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}):([^:]+):([^\]]+)\]/gi,
+    (_, datetime, clientName, title) => {
+      citas.push({ datetime, clientName: clientName.trim(), title: title.trim() });
+      return "";
+    }
+  ).trim();
+  return { citas, clean };
 }
 
 // ─── Helper compartido: genera y envía respuesta ──────────────────────────────
@@ -61,7 +76,26 @@ async function sendReply(
   if (!reply) return true;
 
   const { derivar, clean: afterDerivar } = parseDerivarMarker(reply);
-  const { ids: imageIds, clean: replyText } = parseImageMarkers(afterDerivar);
+  const { citas, clean: afterCitas } = parseCitaMarkers(afterDerivar);
+  const { ids: imageIds, clean: replyText } = parseImageMarkers(afterCitas);
+
+  // Crear citas en DB
+  for (const cita of citas) {
+    try {
+      const startTs = Math.floor(new Date(cita.datetime + "-03:00").getTime() / 1000);
+      createAppointment({
+        conversation_id: convId,
+        phone: remoteJid,
+        client_name: cita.clientName,
+        title: cita.title,
+        start_time: startTs,
+        end_time: startTs + 3600,
+      });
+      console.log(`[bot] Cita creada: ${cita.clientName} — ${cita.datetime}`);
+    } catch (err) {
+      console.error("[bot] Error creando cita:", err);
+    }
+  }
 
   insertMessage(convId, "assistant", replyText || reply);
 
