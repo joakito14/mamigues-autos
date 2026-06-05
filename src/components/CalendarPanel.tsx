@@ -27,7 +27,7 @@ interface AvailDay {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const TZ = "America/Montevideo";
-const DAY_SHORT = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const _DAY_SHORT = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]; void _DAY_SHORT;
 const DAY_FULL = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 const MONTHS = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
 const DURATIONS = [30, 45, 60, 90, 120];
@@ -43,7 +43,6 @@ function fmtTime(ts: number): string {
 }
 
 function fmtDateLabel(d: Date): string {
-  const dow = parseInt(d.toLocaleDateString("en-US", { timeZone: TZ, weekday: "short" }).replace(/[^0-9]/g, "")) || ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(d.toLocaleDateString("en-US", { timeZone: TZ, weekday: "short" }));
   const localDow = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(d.toLocaleDateString("en-US", { timeZone: TZ, weekday: "short" }));
   const dayNum = parseInt(d.toLocaleDateString("en-US", { timeZone: TZ, day: "numeric" }));
   const mon = parseInt(d.toLocaleDateString("en-US", { timeZone: TZ, month: "numeric" })) - 1;
@@ -353,7 +352,7 @@ function AppointmentCard({ appt, onUpdate }: { appt: Appointment; onUpdate: () =
 
 // ─── CalendarPanel ────────────────────────────────────────────────────────────
 
-export default function CalendarPanel() {
+export default function CalendarPanel({ onBack }: { onBack?: () => void }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [avail, setAvail] = useState<AvailDay[]>([]);
@@ -391,6 +390,12 @@ export default function CalendarPanel() {
       <div className="flex flex-col flex-1 overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 flex-wrap">
+          {onBack && (
+            <button onClick={onBack}
+              className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 border border-gray-300 dark:border-slate-600 hover:border-emerald-400 px-2.5 py-1.5 rounded-lg transition-colors shrink-0">
+              ‹ Mensajes
+            </button>
+          )}
           <div className="flex items-center gap-1">
             <button onClick={() => setWeekOffset((w) => w - 1)}
               className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 text-sm transition-colors">
