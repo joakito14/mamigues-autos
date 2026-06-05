@@ -84,6 +84,13 @@ function getDb(): Database.Database {
   try { _db.exec("ALTER TABLE conversations ADD COLUMN client_summary TEXT"); } catch {}
   try { _db.exec("ALTER TABLE conversations ADD COLUMN read_status TEXT NOT NULL DEFAULT 'new'"); } catch {}
 
+  // Migración v2: limpiar prompt viejo para que el nuevo del archivo sea el default
+  const promptVersion = _db.prepare("SELECT value FROM settings WHERE key = 'prompt_version'").get() as { value: string } | undefined;
+  if (!promptVersion || promptVersion.value !== '2') {
+    _db.prepare("DELETE FROM settings WHERE key = 'personality'").run();
+    _db.prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('prompt_version', '2', unixepoch())").run();
+  }
+
   return _db;
 }
 
