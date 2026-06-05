@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { buildSystemPrompt } from "./db";
+import { buildSystemPrompt, setBotStatus } from "./db";
 
 const client = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
@@ -25,7 +25,9 @@ async function callWithRetry(
       const status = (err as { status?: number })?.status;
       if (status === 429 && i < retries - 1) {
         const wait = delayMs * (i + 1);
+        const waitSec = Math.round(wait / 1000);
         console.log(`[openrouter] 429 rate limit — reintentando en ${wait}ms (intento ${i + 1}/${retries})`);
+        setBotStatus("ratelimit", `Reintentando en ${waitSec}s (intento ${i + 1}/${retries})`);
         await new Promise((r) => setTimeout(r, wait));
         continue;
       }

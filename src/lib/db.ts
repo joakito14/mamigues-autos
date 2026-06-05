@@ -273,6 +273,27 @@ export function setSetting(key: string, value: string): void {
   ).run(key, value);
 }
 
+// ─── Estado del bot ──────────────────────────────────────────────────────────
+
+export type BotState = "idle" | "processing" | "ratelimit" | "error";
+
+export interface BotStatus {
+  state: BotState;
+  detail: string;
+  updated_at: number;
+}
+
+export function getBotStatus(): BotStatus {
+  const raw = getSetting("bot_status");
+  if (!raw) return { state: "idle", detail: "", updated_at: 0 };
+  try { return JSON.parse(raw) as BotStatus; }
+  catch { return { state: "idle", detail: "", updated_at: 0 }; }
+}
+
+export function setBotStatus(state: BotState, detail = ""): void {
+  setSetting("bot_status", JSON.stringify({ state, detail, updated_at: Math.floor(Date.now() / 1000) }));
+}
+
 // ─── Productos ────────────────────────────────────────────────────────────────
 
 export interface Product {

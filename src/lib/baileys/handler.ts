@@ -9,6 +9,7 @@ import {
   updateConversationMeta,
   setReadStatus,
   setMode,
+  setBotStatus,
 } from "../db";
 import { generateReply, extractConversationMetadata } from "../openrouter";
 
@@ -74,15 +75,19 @@ export async function processIncomingMessage(
   const history = getRecentHistory(convo.id, 20);
   console.log(`[bot] Llamando LLM con ${history.length} mensajes de historial...`);
 
+  setBotStatus("processing", jidToPhone(phone));
+
   const t0 = Date.now();
   let reply: string;
   try {
     reply = await generateReply(history);
   } catch (err) {
     console.error("[bot] Error llamando al LLM:", err);
+    setBotStatus("error", err instanceof Error ? err.message.slice(0, 120) : String(err).slice(0, 120));
     return;
   }
   console.log(`[bot] LLM respondió en ${Date.now() - t0}ms`);
+  setBotStatus("idle");
 
   if (!reply) return;
 
