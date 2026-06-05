@@ -104,7 +104,10 @@ export default function ConnectionGate() {
 
         {view === "agenda" ? (
           /* ── Vista Agenda ── */
-          <CalendarPanel onBack={() => setView("chat")} />
+          <CalendarPanel
+            onBack={() => setView("chat")}
+            onViewConversation={(id) => { setView("chat"); setSelectedId(id); }}
+          />
         ) : (
           <>
             {/* Sidebar — full screen en mobile cuando no hay chat abierto */}
