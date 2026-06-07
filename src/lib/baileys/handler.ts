@@ -51,6 +51,46 @@ function parseCitaMarkers(text: string): { citas: CitaData[]; clean: string } {
   return { citas, clean };
 }
 
+// ─── Typing delay + presencia ─────────────────────────────────────────────────
+
+// Delay proporcional al largo del mensaje (3-7 segundos)
+function typingDelay(text: string): number {
+  const words = text.trim().split(/\s+/).length;
+  const base = 3000;
+  const perWord = 120; // ms por palabra, simula velocidad de tipeo
+  return Math.min(base + words * perWord, 7000);
+}
+
+async function sendWithTyping(sock: WASock, jid: string, text: string): Promise<void> {
+  const delay = typingDelay(text);
+  try { await sock.sendPresenceUpdate("composing", jid); } catch {}
+  await new Promise((r) => setTimeout(r, delay));
+  try { await sock.sendPresenceUpdate("paused", jid); } catch {}
+  await sock.sendMessage(jid, { text });
+}
+
+// ─── Rate limit por conversación ──────────────────────────────────────────────
+// Máx. 8 respuestas automáticas por conversación en una ventana de 60 minutos.
+// Protege contra picos sospechosos de actividad.
+
+const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hora
+const RATE_MAX = 8;
+
+interface RateEntry { count: number; windowStart: number; }
+const rateMap = new Map<number, RateEntry>();
+
+function checkRateLimit(convId: number): boolean {
+  const now = Date.now();
+  const entry = rateMap.get(convId);
+  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
+    rateMap.set(convId, { count: 1, windowStart: now });
+    return true;
+  }
+  if (entry.count >= RATE_MAX) return false;
+  entry.count++;
+  return true;
+}
+
 // ─── Helper compartido: genera y envía respuesta ──────────────────────────────
 
 async function sendReply(
@@ -58,8 +98,14 @@ async function sendReply(
   remoteJid: string,
   convId: number
 ): Promise<boolean> {
-  const history = getRecentHistory(convId, 20);
+  // Rate limit: no más de 8 mensajes automáticos por hora por conversación
+  if (!checkRateLimit(convId)) {
+    console.log(`[bot] Rate limit local — conversación ${convId} pausada por exceso de mensajes automáticos`);
+    setBotStatus("idle");
+    return true; // no es un error, simplemente no respondemos
+  }
 
+  const history = getRecentHistory(convId, 20);
   setBotStatus("processing", jidToPhone(remoteJid));
 
   let reply: string;
@@ -109,15 +155,17 @@ async function sendReply(
     .then(({ model, summary }) => updateConversationMeta(convId, model, summary))
     .catch(() => {});
 
+  // Enviar texto con delay + indicador de escritura
   if (replyText) {
     try {
-      await sock.sendMessage(remoteJid, { text: replyText });
+      await sendWithTyping(sock, remoteJid, replyText);
       console.log(`[bot] → Texto enviado a ${jidToPhone(remoteJid)}: "${replyText.slice(0, 80)}"`);
     } catch (err) {
       console.error("[bot] Error enviando texto:", err);
     }
   }
 
+  // Enviar imágenes (también con pequeña pausa previa)
   for (const id of imageIds) {
     const product = getProductById(id);
     if (!product?.image_base64) {
@@ -125,6 +173,7 @@ async function sendReply(
       continue;
     }
     try {
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500));
       const base64Data = product.image_base64.replace(/^data:image\/\w+;base64,/, "");
       await sock.sendMessage(remoteJid, {
         image: Buffer.from(base64Data, "base64"),
@@ -145,6 +194,7 @@ export async function processIncomingMessage(
   sock: WASock,
   msg: proto.IWebMessageInfo
 ): Promise<void> {
+  // Solo responder cuando el cliente escribe primero (100% reactivo)
   if (msg.key.fromMe) return;
 
   const remoteJid = msg.key.remoteJid ?? "";
@@ -189,8 +239,7 @@ export async function retryPendingReplies(sock: WASock): Promise<void> {
 
   for (const conv of pending) {
     const history = getRecentHistory(conv.id, 20);
-    // Si no hay mensajes de usuario para contestar, limpiar la bandera
-    const lastUserMsg = [...history].reverse().find(m => m.role === "user");
+    const lastUserMsg = [...history].reverse().find((m) => m.role === "user");
     if (!lastUserMsg) {
       setPendingReply(conv.id, false);
       continue;
@@ -201,7 +250,6 @@ export async function retryPendingReplies(sock: WASock): Promise<void> {
     if (ok) {
       setPendingReply(conv.id, false);
       console.log(`[bot] Pendiente resuelto para ${jidToPhone(conv.phone)}`);
-      // Pequeña pausa entre reintentos para no saturar la API
       await new Promise((r) => setTimeout(r, 3000));
     }
   }
