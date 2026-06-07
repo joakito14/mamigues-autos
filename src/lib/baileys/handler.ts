@@ -185,13 +185,26 @@ export async function processIncomingMessage(
   console.log(`[bot] ← Mensaje de ${jidToPhone(remoteJid)} (${pushName ?? "sin nombre"}): "${text.slice(0, 80)}"`);
 
   const convo = getOrCreateConversation(remoteJid, pushName);
+  const isFirstMessage = convo.last_message_at === null;
+
   insertMessage(convo.id, "user", text);
   setReadStatus(convo.id, "new");
+
+  // Marcar como leído (visto azul ✓✓ para el cliente)
+  try {
+    await sock.readMessages([msg.key]);
+  } catch {}
 
   const fresh = getConversationById(convo.id);
   if (!fresh || fresh.mode !== "AI") {
     console.log(`[bot] Conversación ${convo.id} en modo HUMAN — sin respuesta automática.`);
     return;
+  }
+
+  // Primer mensaje de este contacto: esperar 30s antes de responder
+  if (isFirstMessage) {
+    console.log(`[bot] Primer mensaje de ${jidToPhone(remoteJid)} — esperando 30s antes de responder`);
+    await new Promise((r) => setTimeout(r, 30_000));
   }
 
   console.log(`[bot] Llamando LLM...`);
