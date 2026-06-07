@@ -69,28 +69,6 @@ async function sendWithTyping(sock: WASock, jid: string, text: string): Promise<
   await sock.sendMessage(jid, { text });
 }
 
-// ─── Rate limit por conversación ──────────────────────────────────────────────
-// Máx. 8 respuestas automáticas por conversación en una ventana de 60 minutos.
-// Protege contra picos sospechosos de actividad.
-
-const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hora
-const RATE_MAX = 8;
-
-interface RateEntry { count: number; windowStart: number; }
-const rateMap = new Map<number, RateEntry>();
-
-function checkRateLimit(convId: number): boolean {
-  const now = Date.now();
-  const entry = rateMap.get(convId);
-  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
-    rateMap.set(convId, { count: 1, windowStart: now });
-    return true;
-  }
-  if (entry.count >= RATE_MAX) return false;
-  entry.count++;
-  return true;
-}
-
 // ─── Helper compartido: genera y envía respuesta ──────────────────────────────
 
 async function sendReply(
@@ -98,13 +76,6 @@ async function sendReply(
   remoteJid: string,
   convId: number
 ): Promise<boolean> {
-  // Rate limit: no más de 8 mensajes automáticos por hora por conversación
-  if (!checkRateLimit(convId)) {
-    console.log(`[bot] Rate limit local — conversación ${convId} pausada por exceso de mensajes automáticos`);
-    setBotStatus("idle");
-    return true; // no es un error, simplemente no respondemos
-  }
-
   const history = getRecentHistory(convId, 20);
   setBotStatus("processing", jidToPhone(remoteJid));
 
