@@ -24,6 +24,7 @@ let handle: BotHandle | null = null;
 let outboxTimer: ReturnType<typeof setInterval> | null = null;
 let restartTimer: ReturnType<typeof setInterval> | null = null;
 let pendingTimer: ReturnType<typeof setInterval> | null = null;
+let reconnectAttempts = 0;
 
 export async function start(): Promise<void> {
   console.log("[bot] Iniciando conexión Baileys...");
@@ -92,6 +93,7 @@ export async function start(): Promise<void> {
       const rawId = sock.user?.id ?? "";
       const phone = rawId.split(":")[0];
       console.log(`[bot] Conectado como ${phone}`);
+      reconnectAttempts = 0; // resetear backoff al conectar exitosamente
       setConnectionState({ status: "connected", qr_string: null, phone });
       startOutboxPoller();
       startPendingPoller(sock);
@@ -139,15 +141,16 @@ export async function start(): Promise<void> {
 
 function scheduleReconnect(code: number | undefined): void {
   if (reconnectTimer) return;
-  // Code 440 = connectionReplaced: esperar más para no entrar en loop
-  const delay = code === 440 ? 15000 : 5000;
-  console.log(`[bot] Reconectando en ${delay / 1000}s...`);
+  reconnectAttempts++;
+  // Backoff exponencial: 5s → 10s → 20s → 30s (tope)
+  // Códigos 428/440 (sesión reemplazada): base más alta, 15s
+  const base = (code === 428 || code === 440) ? 15_000 : 5_000;
+  const delay = Math.min(base * Math.pow(1.5, reconnectAttempts - 1), 30_000);
+  console.log(`[bot] Reconectando en ${Math.round(delay / 1000)}s... (intento ${reconnectAttempts}, código ${code})`);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     if (handle) {
-      try {
-        handle.sock.end(undefined);
-      } catch {}
+      try { handle.sock.end(undefined); } catch {}
       handle = null;
     }
     start();
@@ -160,7 +163,7 @@ function startPendingPoller(sock: ReturnType<typeof makeWASocket>): void {
   if (pendingTimer) clearInterval(pendingTimer);
   pendingTimer = setInterval(async () => {
     await retryPendingReplies(sock).catch(() => {});
-  }, 60_000);
+  }, 15_000);
 }
 
 // ─── Poller de outbox ─────────────────────────────────────────────────────────

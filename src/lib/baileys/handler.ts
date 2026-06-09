@@ -96,6 +96,26 @@ async function sendReply(
   const { citas, clean: afterCitas } = parseCitaMarkers(afterDerivar);
   const { ids: imageIds, clean: replyText } = parseImageMarkers(afterCitas);
 
+  // Enviar texto primero — si falla, no guardamos en DB y el retry lo reintenta
+  if (replyText) {
+    try {
+      await sendWithTyping(sock, remoteJid, replyText);
+      console.log(`[bot] → Texto enviado a ${jidToPhone(remoteJid)}: "${replyText.slice(0, 80)}"`);
+    } catch (err) {
+      console.error("[bot] Error enviando texto por WhatsApp:", err);
+      setBotStatus("error", "Fallo al enviar por WhatsApp");
+      return false; // activa pending retry — no guardamos en DB si no llegó
+    }
+  }
+
+  // Llegó a WhatsApp → ahora sí guardar en DB y ejecutar side-effects
+  insertMessage(convId, "assistant", replyText || reply);
+
+  if (derivar) {
+    setMode(convId, "HUMAN");
+    console.log(`[bot] Derivación detectada — conversación ${convId} pasada a modo HUMAN`);
+  }
+
   // Crear citas en DB
   for (const cita of citas) {
     try {
@@ -114,29 +134,12 @@ async function sendReply(
     }
   }
 
-  insertMessage(convId, "assistant", replyText || reply);
-
-  if (derivar) {
-    setMode(convId, "HUMAN");
-    console.log(`[bot] Derivación detectada — conversación ${convId} pasada a modo HUMAN`);
-  }
-
   // Metadata en background
   extractConversationMetadata(getRecentHistory(convId, 20))
     .then(({ model, summary }) => updateConversationMeta(convId, model, summary))
     .catch(() => {});
 
-  // Enviar texto con delay + indicador de escritura
-  if (replyText) {
-    try {
-      await sendWithTyping(sock, remoteJid, replyText);
-      console.log(`[bot] → Texto enviado a ${jidToPhone(remoteJid)}: "${replyText.slice(0, 80)}"`);
-    } catch (err) {
-      console.error("[bot] Error enviando texto:", err);
-    }
-  }
-
-  // Enviar imágenes (también con pequeña pausa previa)
+  // Enviar imágenes
   for (const id of imageIds) {
     const product = getProductById(id);
     if (!product?.image_base64) {
@@ -158,6 +161,13 @@ async function sendReply(
 
   return true;
 }
+
+// ─── Debounce por JID: espera que la persona termine de escribir ──────────────
+
+// Si llegan varios mensajes seguidos, reinicia el timer en cada uno
+// y solo llama al LLM una vez cuando pasan DEBOUNCE_MS sin nuevos mensajes.
+const DEBOUNCE_MS = 3500;
+const replyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 // ─── Mensaje entrante ─────────────────────────────────────────────────────────
 
@@ -199,9 +209,39 @@ export async function processIncomingMessage(
     return;
   }
 
-  console.log(`[bot] Llamando LLM...`);
-  const ok = await sendReply(sock, remoteJid, convo.id);
-  setPendingReply(convo.id, !ok);
+  // Cancelar cualquier respuesta pendiente para este contacto y empezar nuevo timer
+  const existing = replyTimers.get(remoteJid);
+  if (existing) {
+    clearTimeout(existing);
+    console.log(`[bot] Mensaje adicional de ${jidToPhone(remoteJid)} — reiniciando timer debounce`);
+  }
+
+  replyTimers.set(remoteJid, setTimeout(async () => {
+    replyTimers.delete(remoteJid);
+
+    // Re-leer modo por si cambió mientras esperábamos
+    const current = getConversationById(convo.id);
+    if (!current || current.mode !== "AI") return;
+
+    console.log(`[bot] Llamando LLM (${jidToPhone(remoteJid)})...`);
+    const alreadyPending = current.pending_reply === 1;
+    const ok = await sendReply(sock, remoteJid, convo.id);
+    if (!ok) {
+      setPendingReply(convo.id, true);
+      if (!alreadyPending) {
+        const fallback = "Mirá, dame un par de minutos que te confirmo eso.";
+        try {
+          await sendWithTyping(sock, remoteJid, fallback);
+          insertMessage(convo.id, "assistant", fallback);
+          console.log(`[bot] Fallback enviado a ${jidToPhone(remoteJid)}`);
+        } catch (err) {
+          console.warn("[bot] Error enviando fallback:", err);
+        }
+      }
+    } else {
+      setPendingReply(convo.id, false);
+    }
+  }, DEBOUNCE_MS));
 }
 
 // ─── Reintento de pendientes ──────────────────────────────────────────────────
