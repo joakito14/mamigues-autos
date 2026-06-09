@@ -12,10 +12,11 @@ const genAI = new GoogleGenerativeAI(API_KEY);
 // Modelos en orden de preferencia — si uno falla pasa al siguiente automáticamente.
 // Configurables con la variable GEMINI_MODELS=modelo1,modelo2,...
 const DEFAULT_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-flash-lite-latest",
   "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
-  "gemini-1.5-flash",
-  "gemini-1.5-flash-8b",
 ];
 
 const MODELS: string[] = (process.env.GEMINI_MODELS ?? DEFAULT_MODELS.join(","))
