@@ -167,14 +167,16 @@ async function sendReply(
 // Actualizado desde client.ts vía el evento presence.update
 export const composingJids = new Set<string>();
 
-// ─── Debounce por JID ─────────────────────────────────────────────────────────
+// ─── Debounce + control de concurrencia por JID ──────────────────────────────
 
-const DEBOUNCE_MS = 3500;      // espera inicial tras recibir un mensaje
+const DEBOUNCE_MS = 3500;       // espera inicial tras recibir un mensaje
 const COMPOSING_POLL_MS = 1500; // re-chequeo mientras sigue escribiendo
 const replyTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-// Programa (o reprograma) la respuesta para un JID dado.
-// Si cuando el timer dispara el contacto sigue escribiendo, espera COMPOSING_POLL_MS más.
+// JIDs con una llamada al LLM activa en este momento.
+// Evita que dos respuestas corran en paralelo para el mismo contacto.
+const processingJids = new Set<string>();
+
 function scheduleReply(sock: WASock, remoteJid: string, convId: number, delay: number): void {
   const existing = replyTimers.get(remoteJid);
   if (existing) clearTimeout(existing);
@@ -182,32 +184,50 @@ function scheduleReply(sock: WASock, remoteJid: string, convId: number, delay: n
   replyTimers.set(remoteJid, setTimeout(async () => {
     replyTimers.delete(remoteJid);
 
+    // Esperar si el contacto sigue escribiendo
     if (composingJids.has(remoteJid)) {
       console.log(`[bot] ${jidToPhone(remoteJid)} sigue escribiendo — esperando...`);
       scheduleReply(sock, remoteJid, convId, COMPOSING_POLL_MS);
       return;
     }
 
+    // Si hay otro LLM corriendo para este JID, esperar a que termine
+    if (processingJids.has(remoteJid)) {
+      scheduleReply(sock, remoteJid, convId, 1000);
+      return;
+    }
+
     const current = getConversationById(convId);
     if (!current || current.mode !== "AI") return;
 
-    console.log(`[bot] Llamando LLM (${jidToPhone(remoteJid)})...`);
-    const alreadyPending = current.pending_reply === 1;
-    const ok = await sendReply(sock, remoteJid, convId);
-    if (!ok) {
-      setPendingReply(convId, true);
-      if (!alreadyPending) {
-        const fallback = "Mirá, dame un par de minutos que te confirmo eso.";
-        try {
-          await sendWithTyping(sock, remoteJid, fallback);
-          insertMessage(convId, "assistant", fallback);
-          console.log(`[bot] Fallback enviado a ${jidToPhone(remoteJid)}`);
-        } catch (err) {
-          console.warn("[bot] Error enviando fallback:", err);
+    processingJids.add(remoteJid);
+    try {
+      console.log(`[bot] Llamando LLM (${jidToPhone(remoteJid)})...`);
+      const alreadyPending = current.pending_reply === 1;
+      const ok = await sendReply(sock, remoteJid, convId);
+      if (!ok) {
+        setPendingReply(convId, true);
+        if (!alreadyPending) {
+          const fallback = "Mirá, dame un par de minutos que te confirmo eso.";
+          try {
+            await sendWithTyping(sock, remoteJid, fallback);
+            insertMessage(convId, "assistant", fallback);
+            console.log(`[bot] Fallback enviado a ${jidToPhone(remoteJid)}`);
+          } catch (err) {
+            console.warn("[bot] Error enviando fallback:", err);
+          }
+        }
+      } else {
+        setPendingReply(convId, false);
+        // Si llegaron mensajes nuevos mientras procesábamos, atenderlos enseguida
+        const latest = getRecentHistory(convId, 3);
+        if (latest.length > 0 && latest[latest.length - 1].role === "user") {
+          console.log(`[bot] Mensajes nuevos detectados post-respuesta — reintentando en 1.5s`);
+          scheduleReply(sock, remoteJid, convId, 1500);
         }
       }
-    } else {
-      setPendingReply(convId, false);
+    } finally {
+      processingJids.delete(remoteJid);
     }
   }, delay));
 }
