@@ -38,6 +38,35 @@ export interface HistoryMessage {
   content: string;
 }
 
+type GeminiMsg = { role: "user" | "model"; parts: [{ text: string }] };
+
+// Gemini exige: empieza con "user", roles alternados, sin vacíos.
+// Esta función limpia el historial para cumplir esas reglas.
+function normalizeHistory(history: HistoryMessage[]): GeminiMsg[] {
+  // Mapear roles
+  const mapped: GeminiMsg[] = history.map((m) => ({
+    role: (m.role === "user" ? "user" : "model") as "user" | "model",
+    parts: [{ text: m.content }],
+  }));
+
+  // Fusionar mensajes consecutivos del mismo rol (concatenar con salto de línea)
+  const merged: GeminiMsg[] = [];
+  for (const msg of mapped) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      merged[merged.length - 1].parts[0].text += "\n" + msg.parts[0].text;
+    } else {
+      merged.push({ role: msg.role, parts: [{ text: msg.parts[0].text }] });
+    }
+  }
+
+  // Descartar mensajes "model" del principio hasta encontrar el primer "user"
+  while (merged.length > 0 && merged[0].role === "model") {
+    merged.shift();
+  }
+
+  return merged;
+}
+
 async function tryModel(
   modelName: string,
   systemPrompt: string,
@@ -50,16 +79,19 @@ async function tryModel(
     generationConfig: { maxOutputTokens: 512, temperature: 0.7 },
   });
 
-  // Convertir historial al formato de Gemini
-  // Gemini requiere que el historial empiece con "user" y que los roles alternen
-  const geminiHistory = history.slice(0, -1).map((m) => ({
-    role: m.role === "user" ? "user" : "model",
-    parts: [{ text: m.content }],
-  }));
+  // Normalizar historial para cumplir las reglas de Gemini:
+  //   1. Solo roles "user" y "model"
+  //   2. Debe empezar con "user"
+  //   3. Los roles deben alternar (no dos seguidos del mismo)
+  const normalized = normalizeHistory(history);
+  if (normalized.length === 0) return "";
 
-  // El último mensaje del usuario se manda como input actual
-  const lastMsg = history[history.length - 1];
-  const userInput = lastMsg?.content ?? "";
+  // El último mensaje va como input actual (siempre debe ser "user")
+  const lastItem = normalized[normalized.length - 1];
+  if (lastItem.role !== "user") return "";
+
+  const geminiHistory = normalized.slice(0, -1);
+  const userInput = lastItem.parts[0].text;
 
   const chat = model.startChat({ history: geminiHistory });
   const result = await chat.sendMessage(userInput);
