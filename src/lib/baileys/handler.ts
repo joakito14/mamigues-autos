@@ -162,12 +162,55 @@ async function sendReply(
   return true;
 }
 
-// ─── Debounce por JID: espera que la persona termine de escribir ──────────────
+// ─── Presencia: detectar cuando el contacto está escribiendo ─────────────────
 
-// Si llegan varios mensajes seguidos, reinicia el timer en cada uno
-// y solo llama al LLM una vez cuando pasan DEBOUNCE_MS sin nuevos mensajes.
-const DEBOUNCE_MS = 3500;
+// Actualizado desde client.ts vía el evento presence.update
+export const composingJids = new Set<string>();
+
+// ─── Debounce por JID ─────────────────────────────────────────────────────────
+
+const DEBOUNCE_MS = 3500;      // espera inicial tras recibir un mensaje
+const COMPOSING_POLL_MS = 1500; // re-chequeo mientras sigue escribiendo
 const replyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+// Programa (o reprograma) la respuesta para un JID dado.
+// Si cuando el timer dispara el contacto sigue escribiendo, espera COMPOSING_POLL_MS más.
+function scheduleReply(sock: WASock, remoteJid: string, convId: number, delay: number): void {
+  const existing = replyTimers.get(remoteJid);
+  if (existing) clearTimeout(existing);
+
+  replyTimers.set(remoteJid, setTimeout(async () => {
+    replyTimers.delete(remoteJid);
+
+    if (composingJids.has(remoteJid)) {
+      console.log(`[bot] ${jidToPhone(remoteJid)} sigue escribiendo — esperando...`);
+      scheduleReply(sock, remoteJid, convId, COMPOSING_POLL_MS);
+      return;
+    }
+
+    const current = getConversationById(convId);
+    if (!current || current.mode !== "AI") return;
+
+    console.log(`[bot] Llamando LLM (${jidToPhone(remoteJid)})...`);
+    const alreadyPending = current.pending_reply === 1;
+    const ok = await sendReply(sock, remoteJid, convId);
+    if (!ok) {
+      setPendingReply(convId, true);
+      if (!alreadyPending) {
+        const fallback = "Mirá, dame un par de minutos que te confirmo eso.";
+        try {
+          await sendWithTyping(sock, remoteJid, fallback);
+          insertMessage(convId, "assistant", fallback);
+          console.log(`[bot] Fallback enviado a ${jidToPhone(remoteJid)}`);
+        } catch (err) {
+          console.warn("[bot] Error enviando fallback:", err);
+        }
+      }
+    } else {
+      setPendingReply(convId, false);
+    }
+  }, delay));
+}
 
 // ─── Mensaje entrante ─────────────────────────────────────────────────────────
 
@@ -198,10 +241,11 @@ export async function processIncomingMessage(
   insertMessage(convo.id, "user", text);
   setReadStatus(convo.id, "new");
 
+  // Suscribirse a presencia para detectar cuando el contacto escribe
+  try { await sock.presenceSubscribe(remoteJid); } catch {}
+
   // Marcar como leído (visto azul ✓✓ para el cliente)
-  try {
-    await sock.readMessages([msg.key]);
-  } catch {}
+  try { await sock.readMessages([msg.key]); } catch {}
 
   const fresh = getConversationById(convo.id);
   if (!fresh || fresh.mode !== "AI") {
@@ -209,39 +253,11 @@ export async function processIncomingMessage(
     return;
   }
 
-  // Cancelar cualquier respuesta pendiente para este contacto y empezar nuevo timer
-  const existing = replyTimers.get(remoteJid);
-  if (existing) {
-    clearTimeout(existing);
+  if (replyTimers.has(remoteJid)) {
     console.log(`[bot] Mensaje adicional de ${jidToPhone(remoteJid)} — reiniciando timer debounce`);
   }
 
-  replyTimers.set(remoteJid, setTimeout(async () => {
-    replyTimers.delete(remoteJid);
-
-    // Re-leer modo por si cambió mientras esperábamos
-    const current = getConversationById(convo.id);
-    if (!current || current.mode !== "AI") return;
-
-    console.log(`[bot] Llamando LLM (${jidToPhone(remoteJid)})...`);
-    const alreadyPending = current.pending_reply === 1;
-    const ok = await sendReply(sock, remoteJid, convo.id);
-    if (!ok) {
-      setPendingReply(convo.id, true);
-      if (!alreadyPending) {
-        const fallback = "Mirá, dame un par de minutos que te confirmo eso.";
-        try {
-          await sendWithTyping(sock, remoteJid, fallback);
-          insertMessage(convo.id, "assistant", fallback);
-          console.log(`[bot] Fallback enviado a ${jidToPhone(remoteJid)}`);
-        } catch (err) {
-          console.warn("[bot] Error enviando fallback:", err);
-        }
-      }
-    } else {
-      setPendingReply(convo.id, false);
-    }
-  }, DEBOUNCE_MS));
+  scheduleReply(sock, remoteJid, convo.id, DEBOUNCE_MS);
 }
 
 // ─── Reintento de pendientes ──────────────────────────────────────────────────

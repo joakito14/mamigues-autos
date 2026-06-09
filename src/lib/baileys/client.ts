@@ -7,7 +7,7 @@ import makeWASocket, {
 import pino from "pino";
 import path from "node:path";
 import { setConnectionState, getConnectionState } from "../db";
-import { processIncomingMessage, retryPendingReplies } from "./handler";
+import { processIncomingMessage, retryPendingReplies, composingJids } from "./handler";
 import { getPendingOutbox, markOutboxSent } from "../db";
 
 const AUTH_DIR = path.resolve(process.cwd(), "data", "auth");
@@ -118,6 +118,18 @@ export async function start(): Promise<void> {
   });
 
   sock.ev.on("creds.update", saveCreds);
+
+  // Detectar cuando un contacto está escribiendo o grabando audio
+  sock.ev.on("presence.update", ({ id, presences }) => {
+    const isComposing = Object.values(presences).some(
+      (p) => p.lastKnownPresence === "composing" || p.lastKnownPresence === "recording"
+    );
+    if (isComposing) {
+      composingJids.add(id);
+    } else {
+      composingJids.delete(id);
+    }
+  });
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
     console.log(`[bot] messages.upsert tipo="${type}" cantidad=${messages.length}`);
